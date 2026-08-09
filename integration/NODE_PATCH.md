@@ -1,5 +1,10 @@
 # Wiring the calling agent into `WhatsApp_ChatBot_Trek`
 
+> **Status: APPLIED** on 2026-08-09 to the local `Deploy/V2` working tree,
+> uncommitted. This document now records what was actually changed, including two
+> corrections found while applying it. Keep it in sync if you re-do this on
+> another checkout.
+
 Four changes. None of them alter existing behaviour when
 `VOICE_AGENT_URL` is unset — the AI simply never answers.
 
@@ -79,7 +84,7 @@ mirrors the existing `x-extension-token` shared-secret pattern in
 const express = require("express");
 const { getCompanyConnection } = require("../db/tenantConnectionManager.js");
 const { getModel } = require("../db/getModel.js");
-const sendMessage = require("../whatsapp/sendMessage.js");
+const { sendTemplateMessage } = require("../whatsapp/sendMessage.js");
 
 const router = express.Router();
 
@@ -122,8 +127,19 @@ router.post("/lead", requireAgentToken, async (req, res) => {
 // POST /api/voice-agent/handoff — the WhatsApp follow-up that closes the sale.
 router.post("/handoff", requireAgentToken, async (req, res) => {
   try {
-    const { phone, template, params } = req.body;
-    await sendMessage.sendTemplate(req.companyCode, phone, template, params);
+    const { phone, template, languageCode = "en", params = {}, paramOrder } = req.body;
+    // NOTE: the real export is sendTemplateMessage({ to, name, languageCode,
+    // components, tenantId }) — `tenantId` is the companyCode. Body variables are
+    // positional, so params are ordered by `paramOrder` (default name, trekName).
+    const order = Array.isArray(paramOrder) && paramOrder.length ? paramOrder : ["name", "trekName"];
+    const values = order.map((key) => String(params[key] ?? ""));
+    await sendTemplateMessage({
+      to: phone,
+      name: template,
+      languageCode,
+      components: values.length ? [{ type: "body", parameters: values.map((text) => ({ type: "text", text })) }] : [],
+      tenantId: req.companyCode,
+    });
     res.json({ success: true });
   } catch (err) {
     console.error("✗ voice-agent/handoff:", err.message);
@@ -140,10 +156,20 @@ Mount it in `app.js` next to the other routes:
 app.use("/api/voice-agent", require("./src/routes/voiceAgent.js"));
 ```
 
-> **Check before using:** `sendMessage.sendTemplate(...)` is the one call above I
-> did not verify against the current `src/whatsapp/sendMessage.js` exports. Match
-> it to whatever that module actually exposes, and to a template that is already
-> approved in your WABA — an unapproved template name fails at Meta, not here.
+> **Corrections found while applying this:**
+>
+> 1. `sendMessage.js` exports `sendTemplateMessage({ to, name, languageCode,
+>    components, tenantId })` — there is no `sendTemplate`. Template body
+>    variables are **positional**, so the route maps named params through an
+>    explicit `paramOrder`.
+> 2. The lead is stored on the `Call` document only. Fanning it into the existing
+>    funnel was left as a marked TODO on purpose: `Customer` requires `name` +
+>    `email` (a voice call reliably yields neither) and `FunnelEvent.stage` has no
+>    `call` value. Pick the target shape and extend the model rather than forcing
+>    a fit.
+>
+> The template you name must already be **approved** in that company's WABA — an
+> unknown name fails at Meta, not here.
 
 ---
 
