@@ -1,0 +1,23 @@
+# ── Voice agent core ─────────────────────────────────────────────────────────
+# The [sarvam] extra pulls in the Sarvam STT/TTS services; [google] pulls the
+# Gemini LLM service; [webrtc] pulls SmallWebRTCTransport + aiortc, which is what
+# the WhatsApp Calling transport rides on.
+pipecat-ai[sarvam,google,webrtc,silero]>=0.0.90
+
+# WhatsApp Business Calling transport lives in pipecat.transports.whatsapp and
+# needs aiohttp for its Cloud API client.
+aiohttp>=3.10
+
+# ── Web layer (webhook receiver) ─────────────────────────────────────────────
+fastapi>=0.115
+uvicorn[standard]>=0.32
+pydantic>=2.9
+pydantic-settings>=2.6
+
+# ── TrekOps grounding ────────────────────────────────────────────────────────
+motor>=3.6          # async MongoDB — read-only availability lookups
+httpx>=0.27         # writes back to the Node API
+pyjwt>=2.9          # mints the service JWT the Node API expects
+
+python-dotenv>=1.0
+loguru>=0.7
